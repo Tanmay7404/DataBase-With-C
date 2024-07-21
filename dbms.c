@@ -1,5 +1,11 @@
 #include "define.h"
-
+#include "btree.c"
+#include "cursor.c"
+#include "internal_node.c" 
+#include "leaf_node.c" 
+#include "pager.c" 
+#include "query_processing.c" 
+#include "test.c"
 int main(int argc, char* argv[]) {
   if (argc < 2) {
     printf("Must supply a database filename.\n");
@@ -50,6 +56,8 @@ int main(int argc, char* argv[]) {
       case (EXECUTE_DUPLICATE_KEY):
         printf("Error: Duplicate key.\n");
         break;
+      case (EXECUTE_KEY_NOT_FOUND):
+        printf("Error: Key Not Found.\n");
     }
   }
 }

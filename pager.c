@@ -2,23 +2,22 @@
 
 Pager* pager_open(const char* filename) {
   int fd = open(filename,
-                O_RDWR |      // Read/Write mode
-                    O_CREAT,  // Create file if it does not exist
-                S_IWUSR |     // User write permission
-                    S_IRUSR   // User read permission
+                O_RDWR |     
+                    O_CREAT, 
+                S_IWUSR |    
+                    S_IRUSR  
                 );
 
   if (fd == -1) {
     printf("Unable to open file\n");
     exit(EXIT_FAILURE);
   }
-
   off_t file_length = lseek(fd, 0, SEEK_END);
-
+  
   Pager* pager = malloc(sizeof(Pager));
   pager->file_descriptor = fd;
+
   pager->file_length = file_length;
-  pager->num_pages = (file_length / PAGE_SIZE);
 
   if (file_length % PAGE_SIZE != 0) {
     printf("Db file is not a whole number of pages. Corrupt file.\n");
@@ -27,7 +26,29 @@ Pager* pager_open(const char* filename) {
 
   for (uint32_t i = 0; i < TABLE_MAX_PAGES; i++) {
     pager->pages[i] = NULL;
+  
   }
+
+  void* page0 =  malloc(PAGE_SIZE);
+  if(file_length!=0){
+    lseek(pager->file_descriptor, 0, SEEK_SET);
+    ssize_t bytes_read = read(pager->file_descriptor, page0, PAGE_SIZE);
+    if (bytes_read == -1) {
+      printf("Error reading file: %d\n", errno);
+      exit(EXIT_FAILURE);
+    } 
+  }
+  pager->pages[0] = page0;
+  pager->page_used = page0;
+  *is_page_used(pager,0) = true;
+
+  if(file_length==0){
+    *(table_root(pager)) =1;
+    for(int i=1;i<TABLE_MAX_PAGES;i++){
+      *(is_page_used(pager,i)) = false;
+    }
+  }
+  
 
   return pager;
 }
@@ -40,17 +61,9 @@ void* get_page(Pager* pager, uint32_t page_num) {
   }
 
   if (pager->pages[page_num] == NULL) {
-    // Cache miss. Allocate memory and load from file.
     void* page = malloc(PAGE_SIZE);
 
-    uint32_t num_pages = pager->file_length / PAGE_SIZE;
-
-    // We might save a partial page at the end of the file
-    if (pager->file_length % PAGE_SIZE) {
-      num_pages += 1;
-    }
-
-    if (page_num <= num_pages) {
+    if (*(is_page_used(pager,page_num))) {
       lseek(pager->file_descriptor, page_num * PAGE_SIZE, SEEK_SET);
       ssize_t bytes_read = read(pager->file_descriptor, page, PAGE_SIZE);
       if (bytes_read == -1) {
@@ -58,12 +71,8 @@ void* get_page(Pager* pager, uint32_t page_num) {
         exit(EXIT_FAILURE);
       }
     }
-
+    *(is_page_used(pager,page_num)) = true;
     pager->pages[page_num] = page;
-
-    if (page_num >= pager->num_pages) {
-      pager->num_pages = page_num + 1;
-    }
   }
 
   return pager->pages[page_num];
@@ -92,7 +101,39 @@ void pager_flush(Pager* pager, uint32_t page_num) {
   }
 }
 
-uint32_t get_unused_page_num(Pager* pager) { return pager->num_pages; }
+bool* is_page_used(Pager* pager, uint32_t page_num){
+  return ((pager->page_used)+ PAGE_USED_OFFSET +page_num*PAGE_USED_SIZE);
+} 
+
+uint32_t * table_root(Pager * pager){
+  return (pager->page_used); 
+}
+
+uint32_t get_unused_page_num(Pager* pager) { 
+  for(uint32_t i=0;i<TABLE_MAX_PAGES;i++){
+    if(!(*is_page_used(pager,i))){
+      *is_page_used(pager,i) = true;
+      return i;
+    }
+  }  
+  printf("Memory Full\n");
+  exit(EXIT_FAILURE);
+
+}
+
+void delete_page(Pager* pager, uint32_t page_num){
+  void * page = get_page(pager,page_num);
+  if(*node_next(page)!=INVALID_PAGE_NUM){
+    void* node = get_page(pager,*node_next(page));
+    *node_prev(node) = *node_prev(page);
+  }
+  if(*node_prev(page)!=INVALID_PAGE_NUM){
+    void* node = get_page(pager,*node_prev(page));
+    *node_next(node) = *node_next(page);
+  }
+
+  *(is_page_used(pager,page_num)) = false;
+}
 
 void serialize_row(Row* source, void* destination) {
   memcpy(destination + ID_OFFSET, &(source->id), ID_SIZE);
@@ -105,3 +146,4 @@ void deserialize_row(void* source, Row* destination) {
   memcpy(&(destination->username), source + USERNAME_OFFSET, USERNAME_SIZE);
   memcpy(&(destination->email), source + EMAIL_OFFSET, EMAIL_SIZE);
 }
+

@@ -51,13 +51,6 @@ Cursor* table_find(Table* table, uint32_t key) {
 }
 
 void create_new_root(Table* table, uint32_t right_child_page_num) {
-  /*
-  Handle splitting the root.
-  Old root copied to new page, becomes left child.
-  Address of right child passed in.
-  Re-initialize root page to contain the new root node.
-  New root node points to two children.
-  */
 
   void* root = get_page(table->pager, table->root_page_num);
   void* right_child = get_page(table->pager, right_child_page_num);
@@ -68,8 +61,6 @@ void create_new_root(Table* table, uint32_t right_child_page_num) {
     initialize_internal_node(right_child);
     initialize_internal_node(left_child);
   }
-
-  /* Left child has data copied from old root */
   memcpy(left_child, root, PAGE_SIZE);
   set_node_root(left_child, false);
 
@@ -83,7 +74,6 @@ void create_new_root(Table* table, uint32_t right_child_page_num) {
     *node_parent(child) = left_child_page_num;
   }
 
-  /* Root node is a new internal node with one key and two children */
   initialize_internal_node(root);
   set_node_root(root, true);
   *internal_node_num_keys(root) = 1;
@@ -95,4 +85,29 @@ void create_new_root(Table* table, uint32_t right_child_page_num) {
   *node_parent(right_child) = table->root_page_num;
   *node_next(left_child) = right_child_page_num;
   *node_prev(right_child) = left_child_page_num;
+}
+
+void delete_from_root(Table* table, uint32_t key){
+  void * root = get_page(table->pager, table->root_page_num);
+  uint32_t num = *internal_node_num_keys(root);
+  if(num==1){
+    uint32_t new_root_no = *internal_node_right_child(root);
+    void* new_root = get_page(table->pager,new_root_no);
+
+    delete_page(table->pager,table->root_page_num);   
+    table->root_page_num = new_root_no;
+    *node_parent(new_root) = INVALID_PAGE_NUM;
+    *table_root(table->pager) = new_root_no;
+    set_node_root(new_root,true);
+    *node_prev(new_root) = INVALID_PAGE_NUM;
+    *node_next(new_root) = INVALID_PAGE_NUM;
+
+    
+    return;
+  }
+  uint32_t idx = internal_node_find_child(root,key);
+  for(uint32_t i=idx+1;i<num;i++){
+    memcpy(internal_node_cell(root,i-1),internal_node_cell(root,i),INTERNAL_NODE_CELL_SIZE);
+  }
+  *internal_node_num_keys(root)-=1;
 }

@@ -22,10 +22,10 @@ void cursor_advance(Cursor* cursor) {
 
   cursor->cell_num += 1;
   if (cursor->cell_num >= (*leaf_node_num_cells(node))) {
-    /* Advance to next leaf node */
+  
     uint32_t next_page_num = *node_next(node);
     if (next_page_num == INVALID_PAGE_NUM) {
-      /* This was rightmost leaf */
+     
       cursor->end_of_table = true;
     } else {
       cursor->page_num = next_page_num;
